@@ -16,7 +16,7 @@
           <div class="mt-1 relative rounded-md shadow-md">
             <input
               v-on:keyup = "change($event)"
-              v-on:keydown.enter = "add"
+              v-on:keydown.enter = "add(ticker)"
               v-model="ticker"
               type="text"
               name="wallet"
@@ -25,21 +25,14 @@
               placeholder="Например DOGE"
             />
           </div>
-          <div v-if="ticker" class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
-            <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-              BTC
-            </span>
-            <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-              DOGE
-            </span>
-            <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-              BCH
-            </span>
-            <span class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
-              CHD
-            </span>
+          <div class="flex bg-white shadow-md p-1 rounded-md shadow-md flex-wrap">
+            <div v-for="(t, idx) in showHints()" :key="idx">
+              <span @click="add(t)" class="inline-flex items-center px-2 m-1 rounded-md text-xs font-medium bg-gray-300 text-gray-800 cursor-pointer">
+                {{t}}
+              </span>
+            </div>
           </div>
-          <div class="text-sm text-red-600">Такой тикер уже добавлен</div>
+          <div v-if="errTickerAdded" class="text-sm text-red-600">Такой тикер уже добавлен</div>
         </div>
       </div>
       <button
@@ -65,10 +58,22 @@
     </section>
 
     <template v-if="tickers.length">
+      <div>Фильтр: <input v-model="filter"> 
+        <button 
+          class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          v-if="page > 1"
+          @click="page = page - 1"
+          >Назад</button>
+        <button class="my-4 mx-2 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
+          @click="page = page + 1"
+          v-if="hasNextPage"
+        >Вперед
+        </button>
+      </div>
       <hr class="w-full border-t border-gray-600 my-4" />
       <dl class="mt-5 grid grid-cols-1 gap-5 sm:grid-cols-3">
         <div
-          v-for="(t, idx) in tickers"
+          v-for="(t, idx) in filteredTickers()"
           :key="idx"
           @click="select(t)"
           :class="{
@@ -157,15 +162,29 @@ export default {
 
   data() {
     return {
-      ticker: null,
+      ticker: "",
       tickers: [],
       sel: null,
       graph: [],
-      allTickers: null,
+      allTickers: [],
+      errTickerAdded: false,
+      page: 1,
+      filter: "",
+      hasNextPage: true,
     }
   },
 
   created: async function() {
+    const windowData = Object.fromEntries(new URL(window.location).searchParams.entries())
+
+    if (windowData.filter) {
+      this.filter = windowData.filter;
+    }
+
+    if (windowData.page) {
+      this.page = windowData.page;
+    }
+
     const tickersData = localStorage.getItem("crypto-list");
 
     if (tickersData) {
@@ -177,10 +196,23 @@ export default {
 
     const f = await fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true');
     const data = await f.json();
+    console.log(data);
     this.allTickers = data.Data;
   },
 
   methods: {
+    showHints() {
+      return Object.keys(this.allTickers).filter(ticker => ticker.includes(this.ticker)).slice(0, 5)
+    },
+    filteredTickers() {
+      const start = (this.page - 1) * 6;
+      const end = this.page * 6;
+      const filteredTickers = this.tickers.filter(ticker => ticker.name.includes(this.filter));
+
+      this.hasNextPage = filteredTickers.length > end;
+
+      return filteredTickers.slice(start, end);
+    },
     subscribeToUpdates(tickerName) {
       setInterval(async () => {
         const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=9c7a28ec5642111922c38b3b1ec6d9fcb02b9bcd480756db0476c8b281b836d1`)
@@ -192,18 +224,26 @@ export default {
         }
       }, 5000)
     },
-    add() {
+    add(tickerName) {
       const currentTicker = {
-        name: this.ticker,
+        name: tickerName,
         price: "-"
       };
 
-      this.tickers.push(currentTicker)
+      for (const ticker of this.tickers) {
+        if (ticker.name === currentTicker.name) {
+          this.errTickerAdded = true;
+          return false
+        }
+      }
 
+      this.tickers.push(currentTicker);
+      this.filter = "";
       localStorage.setItem("crypto-list", JSON.stringify(this.tickers))
       this.subscribeToUpdates(currentTicker.name)
       this.ticker = "";
     },
+
     select(ticker) {
       this.sel = ticker;
       this.graph = [];
@@ -223,8 +263,26 @@ export default {
       if (evt.key === "Enter") {
         return
       }
+      this.errTickerAdded = false;
     },
   },
+  watch: {
+    filter() {
+      this.page = 1
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    },
+    page() {
+      window.history.pushState(
+        null,
+        document.title,
+        `${window.location.pathname}?filter=${this.filter}&page=${this.page}`
+      )
+    }
+  }
 } 
 </script>
 
