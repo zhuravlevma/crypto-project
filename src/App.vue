@@ -86,7 +86,7 @@
               {{ t.name }} - USD
             </dt>
             <dd class="mt-1 text-3xl font-semibold text-gray-900">
-              {{ t.price }}
+              {{ formatPrice(t.price) }}
             </dd>
           </div>
           <div class="w-full border-t border-gray-200"></div>
@@ -157,6 +157,7 @@
 </template>
 
 <script>
+import { subcribeToTicker, unsubscribeFromTicker } from './api';
 export default {
   name: "App",
 
@@ -188,14 +189,11 @@ export default {
 
     if (tickersData) {
       this.tickers = JSON.parse(tickersData)
-      this.tickers.forEach(ticker => {
-        this.subscribeToUpdates(ticker.name)
-      })
     }
 
     const f = await fetch('https://min-api.cryptocompare.com/data/all/coinlist?summary=true');
     const data = await f.json();
-    console.log(data);
+    this.updateTickers()
     this.allTickers = data.Data;
   },
   computed: {
@@ -236,19 +234,33 @@ export default {
     }
   },
   methods: {
-    showHints() {
-      return Object.keys(this.allTickers).filter(ticker => ticker.includes(this.ticker)).slice(0, 5)
+    formatPrice(price) {
+      if (price === '-') { return price; }
+      return Number(price) > 1 
+          ? Number(price).toFixed(2).toString()
+          : Number(price).toPrecision(2).toString();
     },
-    subscribeToUpdates(tickerName) {
-      setInterval(async () => {
-        const f = await fetch(`https://min-api.cryptocompare.com/data/price?fsym=${tickerName}&tsyms=USD&api_key=9c7a28ec5642111922c38b3b1ec6d9fcb02b9bcd480756db0476c8b281b836d1`)
-        const data = await f.json();
-        this.tickers.find(t => t.name === tickerName).price = data.USD > 1 ? data.USD.toFixed(2) : data.USD.toPrecision(2);
+    showHints() {
+      return Object.keys(this.allTickers).filter(ticker => ticker.includes(this.ticker)).reverse().slice(0, 5)
+    },
+    async updateTickers() {
+      if (!this.tickers.length) {
+        return;
+      }
+      this.tickers.forEach(ticker => {
+        subcribeToTicker(ticker.name.toUpperCase(), (newPrice) => {
+            this.updateTicker(ticker.name, newPrice)
+          });
+      })
+    },
 
-        if (this.selectedTicker?.name === tickerName) {
-          this.graph.push(data.USD);
-        }
-      }, 5000)
+    updateTicker(tickerName, newPrice) {
+      this.tickers
+        .filter(t => t.name === tickerName)
+        .forEach(t => {
+          t.price = newPrice
+        })
+
     },
     add(tickerName) {
       const currentTicker = {
@@ -265,14 +277,17 @@ export default {
 
       this.tickers = [...this.tickers, currentTicker];
       this.filter = "";
-      this.subscribeToUpdates(currentTicker.name)
       this.ticker = "";
+      subcribeToTicker(currentTicker.name, (newPrice) => {
+        this.updateTicker(currentTicker.name, newPrice)
+      })
     },
 
     select(ticker) {
       this.selectedTicker = ticker;
     },
     handleDelete(tickerToRemove) {
+      unsubscribeFromTicker(tickerToRemove.name);
       this.tickers = this.tickers.filter(t => t !== tickerToRemove)
       if (this.selectedTicker === tickerToRemove) {
         this.selectedTicker = null;
