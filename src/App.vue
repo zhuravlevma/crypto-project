@@ -36,7 +36,7 @@
         </div>
       </div>
       <button
-        @click="add()"
+        @click="add(ticker)"
         type="button"
         class="my-4 inline-flex items-center py-2 px-4 border border-transparent shadow-sm text-sm leading-4 font-medium rounded-full text-white bg-gray-600 hover:bg-gray-700 transition-colors duration-300 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-gray-500"
       >
@@ -77,7 +77,9 @@
           :key="idx"
           @click="select(t)"
           :class="{
-            'border-4': selectedTicker == t
+            'border-4': selectedTicker == t,
+            'bg-white': t.bgWhite === true,
+            'bg-red-100': t.bgWhite === false
           }"
           class="bg-white overflow-hidden shadow rounded-lg border-purple-800 border-solid cursor-pointer"
         >
@@ -248,24 +250,26 @@ export default {
         return;
       }
       this.tickers.forEach(ticker => {
-        subcribeToTicker(ticker.name.toUpperCase(), (newPrice) => {
-            this.updateTicker(ticker.name, newPrice)
-          });
+        subcribeToTicker(ticker.name.toUpperCase(), (newPrice, invalid) => {
+          this.updateTicker(ticker.name, newPrice, invalid === true)
+        });
       })
     },
 
-    updateTicker(tickerName, newPrice) {
+    updateTicker(tickerName, newPrice, bgRed) {
       this.tickers
         .filter(t => t.name === tickerName)
         .forEach(t => {
           t.price = newPrice
+          t.bgWhite = bgRed ? false : true 
         })
 
     },
     add(tickerName) {
       const currentTicker = {
         name: tickerName,
-        price: "-"
+        price: "-",
+        bgWhite: true,
       };
 
       for (const ticker of this.tickers) {
@@ -278,8 +282,9 @@ export default {
       this.tickers = [...this.tickers, currentTicker];
       this.filter = "";
       this.ticker = "";
-      subcribeToTicker(currentTicker.name, (newPrice) => {
-        this.updateTicker(currentTicker.name, newPrice)
+      subcribeToTicker(currentTicker.name, (newPrice, invalid) => {
+        console.log(invalid);
+        this.updateTicker(currentTicker.name, newPrice, invalid === true)
       })
     },
 
