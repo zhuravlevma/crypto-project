@@ -117,7 +117,7 @@
       <h3 class="text-lg leading-6 font-medium text-gray-900 my-8">
         {{ selectedTicker.name }} - USD
       </h3>
-      <div class="flex items-end border-gray-600 border-b border-l h-64">
+      <div class="flex items-end border-gray-600 border-b border-l h-64" ref="graph">
           <div
           v-for="(bar, idx) in normalizedGraph"
           :key="idx"
@@ -172,7 +172,8 @@ export default {
       allTickers: [],
       errTickerAdded: false,
       page: 1,
-      filter: ""
+      filter: "",
+      maxGraphElements: 1,
     }
   },
 
@@ -198,6 +199,14 @@ export default {
     this.updateTickers()
     this.allTickers = data.Data;
   },
+  mounted() {
+    window.addEventListener("resize", this.calculateMaxGraphElements);
+  },
+
+  beforeUnmount() {
+    window.removeEventListener("resize", this.calculateMaxGraphElements);
+  },
+
   computed: {
     startIndex() {
       return (this.page - 1) * 6;
@@ -260,11 +269,25 @@ export default {
       this.tickers
         .filter(t => t.name === tickerName)
         .forEach(t => {
+          if (this.selectedTicker === t) {
+            while (this.graph.length > this.maxGraphElements) {
+              this.graph.shift()
+            }
+            this.graph.push(newPrice)
+          }
           t.price = newPrice
           t.bgWhite = bgRed ? false : true 
         })
 
     },
+    calculateMaxGraphElements() {
+      if (!this.$refs.graph) {
+        return;
+      }
+
+      this.maxGraphElements = this.$refs.graph.clientWidth / 38;
+    },
+
     add(tickerName) {
       const currentTicker = {
         name: tickerName,
@@ -283,7 +306,6 @@ export default {
       this.filter = "";
       this.ticker = "";
       subcribeToTicker(currentTicker.name, (newPrice, invalid) => {
-        console.log(invalid);
         this.updateTicker(currentTicker.name, newPrice, invalid === true)
       })
     },

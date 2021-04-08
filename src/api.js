@@ -6,18 +6,6 @@ const tickersBTC = [];
 const socket = new WebSocket(`wss://streamer.cryptocompare.com/v2?api_key=${API_KEY}`)
 const AGGREGATE_INDEX = '5';
 
-const worker = new SharedWorker('./test.js')
-
-worker.port.addEventListener('message', e => {
-  console.log(e.data);
-  worker.port.postMessage([1, 3]);
-}, false)
-worker.port.start();
-worker.port.postMessage('start')
-socket.onerror = function(event) {
-  console.error("WebSocket error observed:", event);
-};
-
 const subcribeToTickerWS = (ticker, currency) => {
   const data = {
     action: "SubAdd",
